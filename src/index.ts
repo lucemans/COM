@@ -9,11 +9,11 @@ const devices: Device[] = [];
 export default class Device {
     id: string;
     ws: WebSocket
-    labels: string[]
+    labels: string[] = [];
 }
 
 wss.on('connection', function connection(ws) {
-    let device;
+    let device: Device;
 
     ws.on('message', function incoming(message) {
         const msg = message.toString().replace('\n', '');
@@ -61,16 +61,45 @@ wss.on('connection', function connection(ws) {
                         a.ws.send('500 ID Re-Registered');
                         a.ws.close();
                         a.ws.terminate();
+                        const _devices = devices.filter((b) => (b.id != a.id));
+                        while (devices.length > 0)
+                            devices.pop();
+                        _devices.forEach((a) => {
+                            devices.push(a);
+                        });
                     }
                 });
                 device.id = words[1];
+                ws.send('200 OK');
                 break;
             case 'LABEL':
-
+                if (!!!device) {
+                    console.log('Device attempted to set ID but wasnt authorized');
+                    ws.send('500 Device did not send ID')
+                    break;
+                }
+                if (words.length == 1) {
+                    ws.send('500 invalid label');
+                    break;
+                }
+                device.labels.push(words[1]);
+                device.labels = [...new Set(device.labels)];
+                ws.send('200 OK');
+                break;
+            case 'FORWARD':
+                if (words.length == 1) {
+                    ws.send('500 No recipient');
+                    break;
+                }
+                const recipient = devices.filter((a) => (a.labels.includes(words[1])));
+                recipient.forEach((a) => {
+                    if (a.ws.OPEN)
+                        a.ws.send('CMD ' + words.slice(2, words.length).join(' '));
+                });
                 break;
             case 'DEVICES':
                 devices.forEach((a) => {
-                    ws.send("DEVICE " + a.id);
+                    ws.send("DEVICE " + a.id + " | " + a.labels.join(' '));
                 });
                 break;
             default:
